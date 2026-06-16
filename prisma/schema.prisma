@@ -1,0 +1,135 @@
+// Reclaim.ai clone — Prisma schema
+// SQLite locally, kept Postgres-compatible (no SQLite-only types; enum-like
+// fields stored as String + validated with zod at the API boundary).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String        @id @default(cuid())
+  name      String
+  email     String        @unique
+  createdAt DateTime      @default(now())
+  settings  UserSettings?
+  tasks     Task[]
+  habits    Habit[]
+  events    Event[]
+  timeOff   TimeOff[]
+  series    RecurringEvent[]
+}
+
+model UserSettings {
+  id                    String @id @default(cuid())
+  userId                String @unique
+  user                  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workdayStartMin       Int    @default(540) // 09:00
+  workdayEndMin         Int    @default(1020) // 17:00
+  workdays              String @default("1,2,3,4,5") // CSV of weekday numbers (1=Mon..7=Sun)
+  defaultBufferMin      Int    @default(15)
+  weeklyFocusTargetHours Int   @default(12)
+  lockHorizonHours      Int    @default(24)
+  planHorizonDays       Int    @default(14)
+  minTaskDurationForBuffer Int @default(90) // task blocks ≥ this get a trailing buffer
+  minGapBetweenTaskChunks  Int @default(15) // min gap between two chunks of the same task
+}
+
+model Task {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  notes        String?
+  durationMin  Int      @default(60)
+  minChunkMin  Int      @default(30)
+  maxChunkMin  Int      @default(120)
+  due          DateTime?
+  priority     Int      @default(3) // 1=highest .. 4=lowest
+  status       String   @default("todo") // "todo" | "scheduled" | "done"
+  scheduledMin Int      @default(0)
+  createdAt    DateTime @default(now())
+  events       Event[]
+  // Self-referential many-to-many: a task can require other tasks to finish
+  // first. `dependsOn` = prerequisites; `dependents` = tasks that need this one.
+  dependsOn    Task[]   @relation("TaskDeps")
+  dependents   Task[]   @relation("TaskDeps")
+}
+
+model Habit {
+  id                 String  @id @default(cuid())
+  userId             String
+  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title              String
+  durationMin        Int     @default(30)
+  frequency          String  @default("DAILY") // "DAILY" | "WEEKDAYS" | "N_PER_WEEK"
+  perWeek            Int     @default(3) // used when frequency = N_PER_WEEK
+  idealWindowStartMin Int    @default(540)
+  idealWindowEndMin  Int     @default(1020)
+  kind               String  @default("SOLO") // "SOLO" | "TEAM"
+  color              String  @default("#10b981")
+  active             Boolean @default(true)
+  createdAt          DateTime @default(now())
+  events             Event[]
+}
+
+model Event {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  start         DateTime
+  end           DateTime
+  type          String   // "MEETING" | "TASK_BLOCK" | "HABIT_BLOCK" | "FOCUS" | "BUFFER"
+  flexible      Boolean  @default(true)
+  state         String   @default("FREE") // "FREE" | "BUSY"
+  locked        Boolean  @default(false)
+  color         String   @default("#5b5bd6")
+  sourceTaskId  String?
+  sourceTask    Task?    @relation(fields: [sourceTaskId], references: [id], onDelete: Cascade)
+  sourceHabitId String?
+  sourceHabit   Habit?   @relation(fields: [sourceHabitId], references: [id], onDelete: Cascade)
+  sourceSeriesId    String?
+  sourceSeries      RecurringEvent? @relation(fields: [sourceSeriesId], references: [id], onDelete: Cascade)
+  noBuffer          Boolean  @default(false)  // user opted out of buffers around this meeting
+  seriesOverride    Boolean  @default(false)  // occurrence manually moved; survives replan
+  seriesOriginalDate String?                  // YYYY-MM-DD of original slot (before the move)
+  createdAt         DateTime @default(now())
+
+  @@index([userId, start])
+}
+
+// A recurring, immovable commitment (e.g. School, Class) the scheduler plans
+// around. Each plan run expands active series into concrete COMMITMENT events.
+model RecurringEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  startMin  Int // minutes-of-day, e.g. 480 = 08:00
+  endMin    Int // minutes-of-day, e.g. 900 = 15:00
+  days      String   @default("1,2,3,4,5") // CSV of ISO weekdays (1=Mon..7=Sun)
+  color        String   @default("#0e7490")
+  active       Boolean  @default(true)
+  deletedDates String   @default("[]") // JSON array of "YYYY-MM-DD" strings — skip these on expansion
+  createdAt    DateTime @default(now())
+  events       Event[]
+
+  @@index([userId])
+}
+
+model TimeOff {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String?
+  start     DateTime // inclusive, start-of-day
+  end       DateTime // exclusive, start-of-day after the last away day
+  createdAt DateTime @default(now())
+
+  @@index([userId, start])
+}
