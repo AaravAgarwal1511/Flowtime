@@ -19,6 +19,7 @@ next-env.d.ts
 
 # Prisma / SQLite (local dev database)
 /prisma/*.db
+/prisma/backups/
 /prisma/*.db-journal
 *.sqlite
 *.sqlite3
@@ -40,3 +41,5 @@ yarn-error.log*
 
 # Misc
 *.tsbuildinfo
+
+/app/generated/prisma
