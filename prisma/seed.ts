@@ -1,3 +1,4 @@
+import "dotenv/config"; // load .env before lib/db reads TURSO_* at module-eval
 import { prisma, DEMO_USER_ID } from "../lib/db";
 import { runPlan } from "../lib/plan";
 

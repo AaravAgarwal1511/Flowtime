@@ -1,4 +1,16 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaLibSQL } from "@prisma/adapter-libsql";
+
+// Runtime is Turso (cloud libSQL) via the Prisma libSQL adapter. The datasource
+// `url` in schema.prisma (DATABASE_URL) is only used by the Prisma CLI; at
+// runtime every query flows through this adapter instead.
+const url = process.env.TURSO_DATABASE_URL;
+const authToken = process.env.TURSO_AUTH_TOKEN;
+if (!url) {
+  throw new Error(
+    "TURSO_DATABASE_URL is not set — this app requires Turso. See .env.example.",
+  );
+}
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -7,6 +19,7 @@ const globalForPrisma = globalThis as unknown as {
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
+    adapter: new PrismaLibSQL({ url, authToken }),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
