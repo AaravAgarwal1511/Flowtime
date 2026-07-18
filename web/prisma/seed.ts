@@ -37,6 +37,7 @@ async function main() {
           weeklyFocusTargetHours: 0, // standalone focus time off — tasks fill deep-work time
           lockHorizonHours: 24,
           planHorizonDays: 14,
+          timezone: "America/Los_Angeles", // demo user's wall clock
         },
       },
     },

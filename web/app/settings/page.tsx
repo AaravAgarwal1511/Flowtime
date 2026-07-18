@@ -17,6 +17,7 @@ export default async function SettingsPage() {
         planHorizonDays: s.planHorizonDays,
         minTaskDurationForBuffer: s.minTaskDurationForBuffer,
         minGapBetweenTaskChunks: s.minGapBetweenTaskChunks,
+        timezone: s.timezone,
       }}
     />
   );

@@ -13,6 +13,29 @@ interface SettingsShape {
   planHorizonDays: number;
   minTaskDurationForBuffer: number;
   minGapBetweenTaskChunks: number;
+  timezone: string;
+}
+
+// Full IANA list where supported (all modern browsers), else a small fallback.
+function allTimeZones(): string[] {
+  const sv = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] })
+    .supportedValuesOf;
+  if (typeof sv === "function") {
+    try {
+      return sv("timeZone");
+    } catch {
+      /* fall through */
+    }
+  }
+  return ["UTC", "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Asia/Kolkata", "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney"];
+}
+
+function detectedTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
 }
 
 const WEEKDAYS = [
@@ -59,6 +82,13 @@ export default function SettingsClient({
     settings.minTaskDurationForBuffer,
   );
   const [chunkGap, setChunkGap] = useState(settings.minGapBetweenTaskChunks);
+  const [tz, setTz] = useState(settings.timezone);
+  const zones = useMemo(() => {
+    const list = allTimeZones();
+    // Ensure the stored value is always selectable even if the browser omits it.
+    return list.includes(settings.timezone) ? list : [settings.timezone, ...list];
+  }, [settings.timezone]);
+  const detected = useMemo(detectedTimeZone, []);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,8 +104,9 @@ export default function SettingsClient({
       planHorizonDays: planHorizon,
       minTaskDurationForBuffer: taskBufferThreshold,
       minGapBetweenTaskChunks: chunkGap,
+      timezone: tz,
     }),
-    [start, end, days, buffer, lockHorizon, planHorizon, taskBufferThreshold, chunkGap],
+    [start, end, days, buffer, lockHorizon, planHorizon, taskBufferThreshold, chunkGap, tz],
   );
 
   const dirty = useMemo(
@@ -87,7 +118,8 @@ export default function SettingsClient({
       current.lockHorizonHours !== settings.lockHorizonHours ||
       current.planHorizonDays !== settings.planHorizonDays ||
       current.minTaskDurationForBuffer !== settings.minTaskDurationForBuffer ||
-      current.minGapBetweenTaskChunks !== settings.minGapBetweenTaskChunks,
+      current.minGapBetweenTaskChunks !== settings.minGapBetweenTaskChunks ||
+      current.timezone !== settings.timezone,
     [current, settings],
   );
 
@@ -110,6 +142,7 @@ export default function SettingsClient({
     setPlanHorizon(settings.planHorizonDays);
     setTaskBufferThreshold(settings.minTaskDurationForBuffer);
     setChunkGap(settings.minGapBetweenTaskChunks);
+    setTz(settings.timezone);
     setError(null);
     setSaved(false);
   }
@@ -183,6 +216,39 @@ export default function SettingsClient({
             {error}
           </p>
         )}
+
+        {/* Time zone */}
+        <Section
+          title="Time zone"
+          desc="The zone the scheduler reads all your times in — working hours, habit windows, and due dates. Set this to where you actually are, or your blocks land at the wrong hour."
+        >
+          <select
+            value={tz}
+            onChange={(e) => {
+              setTz(e.target.value);
+              setSaved(false);
+            }}
+            className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm outline-none focus:border-[var(--primary)] bg-white"
+          >
+            {zones.map((z) => (
+              <option key={z} value={z}>
+                {z}
+              </option>
+            ))}
+          </select>
+          {detected && detected !== tz && (
+            <button
+              type="button"
+              onClick={() => {
+                setTz(detected);
+                setSaved(false);
+              }}
+              className="mt-2 text-xs font-medium text-[var(--primary)] hover:underline"
+            >
+              Use this device&rsquo;s zone ({detected})
+            </button>
+          )}
+        </Section>
 
         {/* Working hours */}
         <Section

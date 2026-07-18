@@ -1,10 +1,7 @@
-import { prisma } from "@/lib/db";
+import { prisma, getSettings } from "@/lib/db";
 import { ok, bad, parseBody } from "@/lib/api";
 import { eventPatch } from "@/lib/types";
-
-function localDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+import { localDateStr } from "@/lib/time";
 
 export async function PATCH(
   req: Request,
@@ -40,10 +37,11 @@ export async function DELETE(
         where: { id: event.sourceSeriesId },
       });
       if (series) {
+        const { timezone } = await getSettings();
         const existing = new Set<string>(
           JSON.parse(series.deletedDates || "[]") as string[],
         );
-        existing.add(localDateStr(event.start));
+        existing.add(localDateStr(event.start, timezone));
         // For override events, also mark the original slot so it doesn't come back.
         if (event.seriesOriginalDate) existing.add(event.seriesOriginalDate);
         await prisma.recurringEvent.update({

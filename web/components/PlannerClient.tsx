@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CalendarRange,
   Loader2,
@@ -46,6 +46,7 @@ interface Props {
   initialSeries: RecurringEventDTO[];
   workHours: WorkHours;
   groqEnabled: boolean;
+  timezone: string;
 }
 
 export default function PlannerClient({
@@ -55,6 +56,7 @@ export default function PlannerClient({
   initialSeries,
   workHours,
   groqEnabled,
+  timezone,
 }: Props) {
   const [events, setEvents] = useState<CalEventDTO[]>(initialEvents);
   const [tasks, setTasks] = useState<TaskDTO[]>(initialTasks);
@@ -120,6 +122,31 @@ export default function PlannerClient({
       setPlanning(false);
     }
   }, [refetch, fetchInsights]);
+
+  // Self-heal the scheduler's time zone: the engine plans in the zone stored in
+  // settings, but the calendar renders in this browser's zone. If they disagree
+  // (e.g. the server defaulted to UTC on first run), blocks land at the wrong
+  // hour — so on first load we adopt the browser's zone and replan once.
+  const healedTz = useRef(false);
+  useEffect(() => {
+    if (healedTz.current) return;
+    let browserTz = "";
+    try {
+      browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch {
+      /* Intl unavailable — nothing to reconcile */
+    }
+    if (!browserTz || browserTz === timezone) return;
+    healedTz.current = true;
+    (async () => {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone: browserTz }),
+      });
+      if (res.ok) await plan();
+    })();
+  }, [timezone, plan]);
 
   async function onEventChange(id: string, start: Date, end: Date) {
     const ev = events.find((e) => e.id === id);

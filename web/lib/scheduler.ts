@@ -4,13 +4,13 @@
 
 import {
   Interval,
+  addLocalDays,
   addMinutes,
   atMinuteOfDay,
   findGaps,
   isoWeekday,
   minutesBetween,
   parseWorkdays,
-  startOfDay,
   subtractBusy,
   weekKey,
   workingWindows,
@@ -27,6 +27,7 @@ export interface SchedulerSettings {
   planHorizonDays: number;
   minTaskDurationForBuffer: number; // task blocks ≥ this get a trailing buffer
   minGapBetweenTaskChunks: number; // min gap between two chunks of the same task
+  timezone: string; // IANA zone all wall-clock windows are interpreted in
 }
 
 export interface FixedEvent extends Interval {
@@ -88,17 +89,16 @@ export function planHorizon(
   habits: SchedHabit[],
   timeOff: Interval[] = [],
 ): PlanResult {
+  const tz = settings.timezone;
   const workdays = parseWorkdays(settings.workdays);
-  const horizonEnd = addMinutes(
-    startOfDay(now),
-    settings.planHorizonDays * 24 * 60,
-  );
+  const horizonEnd = addLocalDays(now, settings.planHorizonDays, tz);
   const windows = workingWindows(
     now,
     settings.planHorizonDays,
     settings.workdayStartMin,
     settings.workdayEndMin,
     workdays,
+    tz,
   );
 
   // Busy timeline seeded with all immovable blocks. We mutate this as we place.
@@ -134,10 +134,10 @@ export function planHorizon(
 
   // --- Habits ---
   for (const habit of habits) {
-    const days = habitDays(now, settings.planHorizonDays, habit, workdays);
+    const days = habitDays(now, settings.planHorizonDays, habit, workdays, tz);
     for (const day of days) {
-      const winStart = atMinuteOfDay(day, habit.idealWindowStartMin);
-      const winEnd = atMinuteOfDay(day, habit.idealWindowEndMin);
+      const winStart = atMinuteOfDay(day, habit.idealWindowStartMin, tz);
+      const winEnd = atMinuteOfDay(day, habit.idealWindowEndMin, tz);
       const clippedStart = winStart < now ? now : winStart;
       if (clippedStart >= winEnd) continue;
       const gaps = subtractBusy({ start: clippedStart, end: winEnd }, busy).filter(
@@ -168,13 +168,13 @@ export function planHorizon(
       // pick the largest gap whose week still needs focus
       let best: Interval | null = null;
       for (const g of gaps) {
-        const wk = weekKey(g.start);
+        const wk = weekKey(g.start, tz);
         if ((placedByWeek.get(wk) ?? 0) >= targetMin) continue;
         if (!best || minutesBetween(g.start, g.end) > minutesBetween(best.start, best.end))
           best = g;
       }
       if (!best) break;
-      const wk = weekKey(best.start);
+      const wk = weekKey(best.start, tz);
       const remaining = targetMin - (placedByWeek.get(wk) ?? 0);
       const len = clamp(
         Math.min(FOCUS_CHUNK_MIN, minutesBetween(best.start, best.end)),
@@ -396,22 +396,22 @@ function habitDays(
   horizonDays: number,
   habit: SchedHabit,
   workdays: Set<number>,
+  tz: string,
 ): Date[] {
-  const day0 = startOfDay(now);
   const all: Date[] = [];
   for (let i = 0; i < horizonDays; i++) {
-    all.push(addMinutes(day0, i * 24 * 60));
+    all.push(addLocalDays(now, i, tz)); // local midnight of calendar day i
   }
   if (habit.frequency === "DAILY") {
     return all;
   }
   if (habit.frequency === "WEEKDAYS") {
-    return all.filter((d) => workdays.has(isoWeekday(d)));
+    return all.filter((d) => workdays.has(isoWeekday(d, tz)));
   }
   // N_PER_WEEK: pick the first `perWeek` workdays of each week.
   const byWeek = new Map<string, Date[]>();
-  for (const d of all.filter((d) => workdays.has(isoWeekday(d)))) {
-    const wk = weekKey(d);
+  for (const d of all.filter((d) => workdays.has(isoWeekday(d, tz)))) {
+    const wk = weekKey(d, tz);
     if (!byWeek.has(wk)) byWeek.set(wk, []);
     byWeek.get(wk)!.push(d);
   }

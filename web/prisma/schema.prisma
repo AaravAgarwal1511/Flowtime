@@ -37,6 +37,7 @@ model UserSettings {
   planHorizonDays       Int    @default(14)
   minTaskDurationForBuffer Int @default(90) // task blocks ≥ this get a trailing buffer
   minGapBetweenTaskChunks  Int @default(15) // min gap between two chunks of the same task
+  timezone              String @default("UTC") // IANA zone the scheduler interprets wall-clock times in
 }
 
 model Task {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidTimeZone } from "./tz";
 
 // ---- Enum-like unions (stored as String in SQLite, validated here) ----
 
@@ -142,5 +143,9 @@ export const settingsInput = z.object({
   planHorizonDays: z.number().int().min(1).max(30).optional(),
   minTaskDurationForBuffer: z.number().int().min(15).max(480).optional(),
   minGapBetweenTaskChunks: z.number().int().min(0).max(240).optional(),
+  timezone: z
+    .string()
+    .refine(isValidTimeZone, "Not a valid IANA time zone")
+    .optional(),
 });
 export type SettingsInput = z.infer<typeof settingsInput>;

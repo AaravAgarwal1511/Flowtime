@@ -11,6 +11,7 @@ import {
 } from "./scheduler";
 import { EventType } from "./types";
 import { expandSeries } from "./recurrence";
+import { localDateStr } from "./time";
 
 export interface RunPlanResult {
   created: number;
@@ -25,6 +26,7 @@ export async function runPlan(
 ): Promise<RunPlanResult> {
   const settingsRow = await prisma.userSettings.findUnique({ where: { userId } });
   if (!settingsRow) throw new Error("Settings not found for user");
+  const tz = settingsRow.timezone;
 
   const [events, tasks, habits, timeOff, series] = await Promise.all([
     prisma.event.findMany({ where: { userId } }),
@@ -88,9 +90,6 @@ export async function runPlan(
   // Build per-series skip-date sets: deleted occurrences + manually-moved overrides.
   // Both the override's new position and its original position are skipped so
   // expandSeries doesn't regenerate a conflicting occurrence on either date.
-  function localDateStr(d: Date): string {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  }
   const skipDates = new Map<string, Set<string>>();
   for (const s of series) {
     const set = new Set<string>(JSON.parse(s.deletedDates || "[]") as string[]);
@@ -100,13 +99,13 @@ export async function runPlan(
     if (!e.sourceSeriesId || !e.seriesOverride) continue;
     const set = skipDates.get(e.sourceSeriesId);
     if (!set) continue;
-    set.add(localDateStr(e.start)); // skip the override's new position
+    set.add(localDateStr(e.start, tz)); // skip the override's new position
     if (e.seriesOriginalDate) set.add(e.seriesOriginalDate); // skip the original slot
   }
 
   // Recurring commitments are regenerated each plan, so exclude the previous
   // non-override occurrences from `fixed` and re-expand the active series fresh.
-  const occurrences = expandSeries(series, now, settingsRow.planHorizonDays, skipDates);
+  const occurrences = expandSeries(series, now, settingsRow.planHorizonDays, tz, skipDates);
 
   // Immovable = fixed (meetings/manual) OR any locked flexible block — except
   // focus/habit/task blocks (always regenerated) and the old series occurrences
@@ -150,6 +149,7 @@ export async function runPlan(
     planHorizonDays: settingsRow.planHorizonDays,
     minTaskDurationForBuffer: settingsRow.minTaskDurationForBuffer,
     minGapBetweenTaskChunks: settingsRow.minGapBetweenTaskChunks,
+    timezone: tz,
   };
 
   // Overdue + unfinished tasks: drop the past deadline for this run so they

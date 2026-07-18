@@ -89,6 +89,7 @@ export default async function PlannerPage() {
           .filter((n) => n >= 1 && n <= 7),
       }}
       groqEnabled={!!process.env.GROQ_API_KEY}
+      timezone={settings.timezone}
     />
   );
 }
